@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2024 olivershooter
-# Author: olivershooter
-# Based on tteckster's script
+# Copyright (c) 2021-2024 tteck
+# Author: tteck (tteckster)
 # License: MIT
 # https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 
@@ -15,7 +14,6 @@ __________                              .____     ____  ____________
  |    |     |  | \/  |  /   |  \  ___/  |    |___  /     \ \     \____
  |____|     |__|  |____/|___|  /\___  > |_______ \/___/\  \ \______  /
                              \/     \/          \/      \_/        \/ 
-
 EOF
 }
 BL=$(echo "\033[36m")
@@ -25,7 +23,7 @@ GN=$(echo "\033[1;92m")
 CL=$(echo "\033[m")
 header_info
 echo "Loading..."
-whiptail --backtitle "Proxmox VE Helper Scripts" --title "Proxmox VE LXC Updater" --yesno "This will prune Docker images on selected LXC Containers. Proceed?" 10 58 || exit
+whiptail --backtitle "Proxmox VE Helper Scripts" --title "Proxmox VE LXC Updater" --yesno "This Will Clean logs, cache and update apt lists on selected LXC Containers. Proceed?" 10 58 || exit
 NODE=$(hostname)
 EXCLUDE_MENU=()
 MSG_MAX_LENGTH=0
@@ -34,24 +32,16 @@ while read -r TAG ITEM; do
   ((${#ITEM} + OFFSET > MSG_MAX_LENGTH)) && MSG_MAX_LENGTH=${#ITEM}+OFFSET
   EXCLUDE_MENU+=("$TAG" "$ITEM " "OFF")
 done < <(pct list | awk 'NR>1')
-excluded_containers=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Containers on $NODE" --checklist "\nSelect containers to skip from pruning:\n" \
+excluded_containers=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Containers on $NODE" --checklist "\nSelect containers to skip from cleaning:\n" \
   16 $((MSG_MAX_LENGTH + 23)) 6 "${EXCLUDE_MENU[@]}" 3>&1 1>&2 2>&3 | tr -d '"') || exit  
 
-DO_SYSTEM_PRUNE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "System Prune" --yesno "Do you also want to perform a system prune?" 10 58 && echo "true" || echo "false")
-
-function prune_containers() {
+function clean_container() {
   container=$1
   header_info
   name=$(pct exec "$container" hostname)
-  if [ "$DO_SYSTEM_PRUNE" == "true" ]; then
-    echo -e "${BL}[Info]${GN} Performing system prune on ${name} ${CL} \n"
-    pct exec $container -- bash -c "docker system prune -a -f"
-  else
-    echo -e "${BL}[Info]${GN} Cleaning Docker images on ${name} ${CL} \n"
-    pct exec $container -- bash -c "docker image prune -a -f"
-  fi
+  echo -e "${BL}[Info]${GN} Cleaning Docker images on ${name} ${CL} \n"
+  pct exec $container -- bash -c "docker image prune -a -f"
 }
-
 for container in $(pct list | awk '{if(NR>1) print $1}'); do
   if [[ " ${excluded_containers[@]} " =~ " $container " ]]; then
     header_info
@@ -73,11 +63,11 @@ for container in $(pct list | awk '{if(NR>1) print $1}'); do
       pct start $container
       echo -e "${BL}[Info]${GN} Waiting For${BL} $container${CL}${GN} To Start ${CL} \n"
       sleep 5
-      prune_containers $container
+      clean_container $container
       echo -e "${BL}[Info]${GN} Shutting down${BL} $container ${CL} \n"
       pct shutdown $container &
     elif [ "$status" == "status: running" ]; then
-      prune_containers $container
+      clean_container $container
     fi
   fi
 done
